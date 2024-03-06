@@ -19,6 +19,78 @@ struct Args {
     port: u16,
 }
 
+struct TlsVersions {
+    versions: Vec<openssl::ssl::SslVersion>,
+}
+
+impl TlsVersions {
+    fn new() -> Self {
+        TlsVersions {
+            versions: vec![
+                openssl::ssl::SslVersion::TLS1,
+                openssl::ssl::SslVersion::TLS1_1,
+                openssl::ssl::SslVersion::TLS1_2,
+            ],
+        }
+    }
+
+    fn try_connect(&self, host: &str, port: u16) {
+        for &tls_version in &self.versions {
+            let mut ssl_connector_builder = SslConnector::builder(SslMethod::tls()).unwrap();
+            ssl_connector_builder
+                .set_min_proto_version(Some(tls_version))
+                .unwrap();
+            ssl_connector_builder
+                .set_max_proto_version(Some(tls_version))
+                .unwrap();
+            let ssl_connector = ssl_connector_builder.build();
+
+            match TcpStream::connect((host, port)) {
+                Ok(stream) => {
+                    match ssl_connector.connect(host, stream) {
+                        Ok(ssl_stream) => {
+                            debug!("SSL stream: {:?}", ssl_stream);
+                            let ssl = ssl_stream.ssl();
+                            println!(
+                                "Connected using TLS version: {}",
+                                self.tls_version_to_string(tls_version)
+                            );
+                            println!("Supported Ciphers:");
+                            for cipher in ssl.current_cipher().unwrap().name().split(':') {
+                                println!("{}", cipher);
+                            }
+                            return; // Exit the loop if successful connection
+                        }
+                        Err(err) => {
+                            println!(
+                                "Connection attempt using TLS {} failed: {}",
+                                self.tls_version_to_string(tls_version),
+                                err
+                            );
+                        }
+                    }
+                }
+                Err(err) => {
+                    println!(
+                        "Connection attempt using TLS {} failed: {}",
+                        self.tls_version_to_string(tls_version),
+                        err
+                    );
+                }
+            }
+        }
+    }
+
+    fn tls_version_to_string(&self, tls_version: openssl::ssl::SslVersion) -> &'static str {
+        match tls_version {
+            openssl::ssl::SslVersion::TLS1 => "TLSv1",
+            openssl::ssl::SslVersion::TLS1_1 => "TLSv1.1",
+            openssl::ssl::SslVersion::TLS1_2 => "TLSv1.2",
+            _ => "Unknown",
+        }
+    }
+}
+
 fn main() {
     env_logger::init();
 
@@ -28,51 +100,6 @@ fn main() {
     let port = args.port;
     debug!("Connecting to {}:{}", host, port);
 
-    let tls_versions = [
-        openssl::ssl::SslVersion::SSL3,
-        openssl::ssl::SslVersion::TLS1,
-        openssl::ssl::SslVersion::TLS1_1,
-        openssl::ssl::SslVersion::TLS1_2,
-        openssl::ssl::SslVersion::TLS1_3,
-    ];
-
-    for &tls_version in &tls_versions {
-        let mut ssl_connector_builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        ssl_connector_builder
-            .set_min_proto_version(Some(tls_version))
-            .unwrap();
-        ssl_connector_builder
-            .set_max_proto_version(Some(tls_version))
-            .unwrap();
-        let ssl_connector = ssl_connector_builder.build();
-
-        match TcpStream::connect((host, port)) {
-            Ok(stream) => {
-                match ssl_connector.connect(host, stream) {
-                    Ok(ssl_stream) => {
-                        debug!("SSL stream: {:?}", ssl_stream);
-                        let ssl = ssl_stream.ssl();
-                        println!("Connected using TLS version: {}", ssl.version_str());
-                        println!("Supported Ciphers:");
-                        for cipher in ssl.current_cipher().unwrap().name().split(':') {
-                            println!("{}", cipher);
-                        }
-                        //    break; // Exit the loop if successful connection
-                    }
-                    Err(err) => {
-                        println!(
-                            "Connection attempt using TLS {:?} failed: {}",
-                            tls_version, err
-                        );
-                    }
-                }
-            }
-            Err(err) => {
-                println!(
-                    "Connection attempt using TLS {:?} failed: {}",
-                    tls_version, err
-                );
-            }
-        }
-    }
+    let tls_versions = TlsVersions::new();
+    tls_versions.try_connect(host, port);
 }
