@@ -1,13 +1,12 @@
 use clap::Parser;
-use env_logger;
-use log::{debug, info};
-use openssl::ssl::{SslConnector, SslMethod};
+use log::debug;
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::net::TcpStream;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.0.1",
+    version = "v0.0.2",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Security scanner"
 )]
@@ -27,7 +26,7 @@ impl TlsVersions {
     fn new() -> Self {
         TlsVersions {
             versions: vec![
-                openssl::ssl::SslVersion::SSL3,
+                // openssl::ssl::SslVersion::SSL3,
                 openssl::ssl::SslVersion::TLS1,
                 openssl::ssl::SslVersion::TLS1_1,
                 openssl::ssl::SslVersion::TLS1_2,
@@ -38,7 +37,13 @@ impl TlsVersions {
 
     fn try_connect(&self, host: &str, port: u16) {
         for &tls_version in &self.versions {
-            let mut ssl_connector_builder = SslConnector::builder(SslMethod::tls()).unwrap();
+            let mut ssl_connector_builder = SslConnector::builder(SslMethod::tls_client()).unwrap();
+            ssl_connector_builder.set_verify(SslVerifyMode::NONE);
+            ssl_connector_builder.set_security_level(0);
+            match tls_version {
+                openssl::ssl::SslVersion::TLS1_3 => {}
+                _ => ssl_connector_builder.set_cipher_list("ALL").unwrap(),
+            }
             ssl_connector_builder
                 .set_min_proto_version(Some(tls_version))
                 .unwrap();
