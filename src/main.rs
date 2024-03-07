@@ -27,6 +27,7 @@ impl TlsVersions {
     fn new() -> Self {
         TlsVersions {
             versions: vec![
+                openssl::ssl::SslVersion::SSL3,
                 openssl::ssl::SslVersion::TLS1,
                 openssl::ssl::SslVersion::TLS1_1,
                 openssl::ssl::SslVersion::TLS1_2,
@@ -78,6 +79,7 @@ impl TlsVersions {
 
     fn tls_version_to_string(&self, tls_version: openssl::ssl::SslVersion) -> &'static str {
         match tls_version {
+            openssl::ssl::SslVersion::SSL3 => "SSLv3",
             openssl::ssl::SslVersion::TLS1 => "TLSv1",
             openssl::ssl::SslVersion::TLS1_1 => "TLSv1.1",
             openssl::ssl::SslVersion::TLS1_2 => "TLSv1.2",
