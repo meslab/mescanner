@@ -6,9 +6,9 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.0.2",
+    version = "v0.1.0",
     author = "Anton Sidorov tonysidrock@gmail.com",
-    about = "Security scanner"
+    about = "Web scanner"
 )]
 struct Args {
     #[clap(short, long, required = true)]
