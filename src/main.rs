@@ -1,6 +1,7 @@
 use clap::Parser;
 use log::debug;
 use messcanner::tls::TlsVersions;
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -26,6 +27,15 @@ fn main() {
     let port = args.port;
     debug!("Connecting to {}:{}", host, port);
 
-    let tls_versions = TlsVersions::new();
+    let output = Command::new("openssl")
+        .arg("ciphers")
+        .arg("ALL:eNULL")
+        .output()
+        .expect("Failed to execute command");
+
+    let cipher_list_binding = String::from_utf8(output.stdout).unwrap();
+    let cipher_list = cipher_list_binding.split(":").collect();
+
+    let tls_versions = TlsVersions::new(cipher_list);
     tls_versions.try_connect(host, port);
 }
