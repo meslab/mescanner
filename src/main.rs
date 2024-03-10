@@ -1,6 +1,8 @@
 use clap::Parser;
 use log::debug;
 use messcanner::tls::TlsVersions;
+use std::fs::File;
+use std::io::Write;
 use std::process::Command;
 
 #[derive(Parser)]
@@ -16,6 +18,12 @@ struct Args {
 
     #[clap(short, long, default_value_t = 443)]
     port: u16,
+
+    #[clap(short, long)]
+    write: bool,
+
+    #[clap(short, long)]
+    quiet: bool,
 }
 
 fn main() {
@@ -37,7 +45,20 @@ fn main() {
     let cipher_list = cipher_list_binding.split(':').collect();
 
     let tls_versions = TlsVersions::new(cipher_list);
-    for tls_protocol in tls_versions.try_connect(host, port) {
-        println!("{}", tls_protocol);
+
+    if args.write {
+        write_tls_protocols_to_file(&tls_versions, host, port, args.quiet);
+    } else {
+        for tls_protocol in tls_versions.try_connect(host, port, args.quiet) {
+            println!("{}", tls_protocol);
+        }
+    }
+}
+
+fn write_tls_protocols_to_file(tls_versions: &TlsVersions, host: &str, port: u16, quiet: bool) {
+    let mut file = File::create(format!("{}.txt", host)).unwrap();
+
+    for tls_protocol in tls_versions.try_connect(host, port, quiet) {
+        writeln!(file, "{}", tls_protocol).unwrap();
     }
 }
