@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::debug;
 use messcanner::tls::TlsVersions;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
 use std::process::Command;
 
@@ -24,6 +24,9 @@ struct Args {
 
     #[clap(short, long)]
     quiet: bool,
+
+    #[clap(short, long, default_value = "reports")]
+    target: String,
 }
 
 fn main() {
@@ -47,7 +50,7 @@ fn main() {
     let tls_versions = TlsVersions::new(cipher_list);
 
     if args.write {
-        write_tls_protocols_to_file(&tls_versions, host, port, args.quiet);
+        write_tls_protocols_to_file(&tls_versions, host, port, &args.target, args.quiet);
     } else {
         for tls_protocol in tls_versions.try_connect(host, port, args.quiet) {
             println!("{}", tls_protocol);
@@ -55,8 +58,15 @@ fn main() {
     }
 }
 
-fn write_tls_protocols_to_file(tls_versions: &TlsVersions, host: &str, port: u16, quiet: bool) {
-    let mut file = File::create(format!("{}.txt", host)).unwrap();
+fn write_tls_protocols_to_file(
+    tls_versions: &TlsVersions,
+    host: &str,
+    port: u16,
+    target: &str,
+    quiet: bool,
+) {
+    fs::create_dir_all(target).unwrap();
+    let mut file = File::create(format!("./{}/{}.txt", target, host)).unwrap();
 
     for tls_protocol in tls_versions.try_connect(host, port, quiet) {
         writeln!(file, "{}", tls_protocol).unwrap();
