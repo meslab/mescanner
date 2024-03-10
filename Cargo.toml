@@ -13,3 +13,4 @@ openssl = "0.10.64"
 
 [profile.release]
 lto=true
+codegen-units = 1
