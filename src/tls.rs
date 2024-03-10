@@ -24,26 +24,20 @@ impl<'a> TlsVersions<'a> {
 
     pub fn try_connect(&self, host: &str, port: u16, quiet: bool) -> Vec<TlsVersion> {
         debug!("Supported ciphers: {:?}", self.cipher_list);
-        match quiet {
-            false => {
-                println!(
-                    "Testing secure connection to {}:{} using different TLS versions and ciphers",
-                    host, port
-                );
-                println!(
-                    "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
-                );
-            }
-            _ => {}
+        if !quiet {
+            println!(
+                "Testing secure connection to {}:{} using different TLS versions and ciphers",
+                host, port
+            );
+            println!(
+                "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
+            );
         }
         let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
         for &tls_version in &self.versions {
-            match quiet {
-                false => {
-                    println!("Using {} ", tls_version_to_string(tls_version));
-                }
-                _ => {}
+            if !quiet {
+                println!("Using {} ", tls_version_to_string(tls_version));
             }
             let mut tls_proto = TlsVersion::new(tls_version);
 
@@ -89,11 +83,8 @@ impl<'a> TlsVersions<'a> {
                 match TcpStream::connect((host, port)) {
                     Ok(stream) => match connector.connect(host, stream) {
                         Ok(ssl_stream) => {
-                            match quiet {
-                                false => {
-                                    print!("+");
-                                }
-                                _ => {}
+                            if !quiet {
+                                print!("+");
                             }
                             debug!("SSL stream: {:?}", ssl_stream);
                             let current_ciphers = ssl_stream
@@ -114,11 +105,8 @@ impl<'a> TlsVersions<'a> {
                             }
                         }
                         Err(err) => {
-                            match quiet {
-                                false => {
-                                    print!("-");
-                                }
-                                _ => {}
+                            if !quiet {
+                                print!("-");
                             }
 
                             let _ = &tls_proto
@@ -141,11 +129,8 @@ impl<'a> TlsVersions<'a> {
                 }
                 io::stdout().flush().unwrap();
             }
-            match quiet {
-                false => {
-                    println!();
-                }
-                _ => {}
+            if !quiet {
+                println!();
             }
             match &tls_proto.server_supported_ciphers.len() {
                 0 => {
