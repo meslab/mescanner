@@ -33,7 +33,7 @@ impl<'a> TlsVersions<'a> {
         let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
         for &tls_version in &self.versions {
-            println!("Testing protovol: {} ", tls_version_to_string(tls_version));
+            println!("Using {} ", tls_version_to_string(tls_version));
             let mut tls_proto = TlsVersion::new(tls_version);
 
             for cipher in &self.cipher_list {
@@ -170,11 +170,13 @@ impl fmt::Display for TlsVersion {
         writeln!(f, "Protocol: {}", tls_version_to_string(self.version))?;
         match &self.server_supported_ciphers.len() {
             0 => writeln!(f, "Server does not support this protocol"),
-            _ => writeln!(
-                f,
-                "Server Supported Ciphers: {:?}",
-                self.server_supported_ciphers
-            ),
+            _ => {
+                writeln!(f, "  Server Supported Ciphers:")?;
+                for cipher in &self.server_supported_ciphers {
+                    writeln!(f, "    {}", cipher)?;
+                }
+                write!(f, "")
+            }
         }
     }
 }
