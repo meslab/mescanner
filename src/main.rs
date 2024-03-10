@@ -6,7 +6,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 #[clap(
-    version = "v0.1.0",
+    version = "v0.2.0",
     author = "Anton Sidorov tonysidrock@gmail.com",
     about = "Web scanner"
 )]
@@ -34,8 +34,10 @@ fn main() {
         .expect("Failed to execute command");
 
     let cipher_list_binding = String::from_utf8(output.stdout).unwrap();
-    let cipher_list = cipher_list_binding.split(":").collect();
+    let cipher_list = cipher_list_binding.split(':').collect();
 
     let tls_versions = TlsVersions::new(cipher_list);
-    tls_versions.try_connect(host, port);
+    for tls_protocol in tls_versions.try_connect(host, port) {
+        println!("{}", tls_protocol);
+    }
 }
