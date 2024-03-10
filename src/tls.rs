@@ -53,7 +53,7 @@ impl<'a> TlsVersions<'a> {
 
                 match tls_version {
                     openssl::ssl::SslVersion::TLS1_3 => match builder.set_ciphersuites(cipher) {
-                        Result::Ok(_) => {
+                        Ok(_) => {
                             tls_proto.client_supported_ciphers.push(cipher.to_string());
                         }
                         _ => {
@@ -64,7 +64,7 @@ impl<'a> TlsVersions<'a> {
                         }
                     },
                     _ => match builder.set_cipher_list(cipher) {
-                        Result::Ok(_) => {
+                        Ok(_) => {
                             tls_proto.client_supported_ciphers.push(cipher.to_string());
                         }
                         _ => {
