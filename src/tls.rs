@@ -44,116 +44,97 @@ impl<'a> TlsVersions<'a> {
             "Testing secure connection to {}:{} using different TLS versions and ciphers\nLegend: '+' - successful connection attempt, '-' - failed connecion attempt.",
             host, port
         ));
-        
-        let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
-        for &tls_version in &self.versions {
-            print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
-            let mut tls_proto = TlsVersion::new(tls_version);
-            let mut legend = "";
+        let tls_protos: Vec<TlsVersion> = self
+            .versions
+            .iter()
+            .map(|&tls_version| {
+                print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
+                let mut legend = "";
+                let mut server_supported_ciphers: Vec<String> = Vec::new();
+                for cipher in &self.cipher_list {
+                    debug!(
+                        "Trying to connect using Protocol {}, cipher: {}",
+                        tls_version_to_string(tls_version),
+                        cipher
+                    );
+                    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+                    builder.set_verify(SslVerifyMode::NONE);
+                    builder.set_security_level(0);
 
-            for cipher in &self.cipher_list {
-                debug!(
-                    "Trying to connect using Protocol {}, cipher: {}",
-                    tls_version_to_string(tls_version),
-                    cipher
-                );
-                let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-                builder.set_verify(SslVerifyMode::NONE);
-                builder.set_security_level(0);
-
-                match tls_version {
-                    openssl::ssl::SslVersion::TLS1_3 => match builder.set_ciphersuites(cipher) {
-                        Ok(_) => {
-                            tls_proto.client_supported_ciphers.push(cipher.to_string());
-                        }
-                        _ => {
-                            tls_proto
-                                .client_unsupported_ciphers
-                                .push(cipher.to_string());
-                            continue;
-                        }
-                    },
-                    _ => match builder.set_cipher_list(cipher) {
-                        Ok(_) => {
-                            tls_proto.client_supported_ciphers.push(cipher.to_string());
-                        }
-                        _ => {
-                            tls_proto
-                                .client_unsupported_ciphers
-                                .push(cipher.to_string());
-                            continue;
-                        }
-                    },
-                }
-
-                builder.set_min_proto_version(Some(tls_version)).unwrap();
-                builder.set_max_proto_version(Some(tls_version)).unwrap();
-                let connector = builder.build();
-
-                match TcpStream::connect((host, port)) {
-                    Ok(stream) => match connector.connect(host, stream) {
-                        Ok(ssl_stream) => {
-                            legend = "+";
-                            debug!("SSL stream: {:?}", ssl_stream);
-                            let current_ciphers = ssl_stream
-                                .ssl()
-                                .current_cipher()
-                                .unwrap()
-                                .name()
-                                .split(':')
-                                .map(|s| s.to_string())
-                                .collect::<Vec<String>>();
-                            for current_cipher in current_ciphers {
-                                match tls_proto.server_supported_ciphers.contains(&current_cipher) {
-                                    false => {
-                                        &tls_proto.server_supported_ciphers.push(current_cipher)
-                                    }
-                                    _ => continue,
-                                };
+                    match tls_version {
+                        openssl::ssl::SslVersion::TLS1_3 => {
+                            match builder.set_ciphersuites(cipher) {
+                                Ok(_) => {}
+                                _ => continue,
                             }
                         }
+                        _ => match builder.set_cipher_list(cipher) {
+                            Ok(_) => {}
+                            _ => continue,
+                        },
+                    }
+
+                    builder.set_min_proto_version(Some(tls_version)).unwrap();
+                    builder.set_max_proto_version(Some(tls_version)).unwrap();
+                    let connector = builder.build();
+
+                    match TcpStream::connect((host, port)) {
+                        Ok(stream) => match connector.connect(host, stream) {
+                            Ok(ssl_stream) => {
+                                legend = "+";
+                                debug!("SSL stream: {:?}", ssl_stream);
+                                let current_ciphers = ssl_stream
+                                    .ssl()
+                                    .current_cipher()
+                                    .unwrap()
+                                    .name()
+                                    .split(':')
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<String>>();
+                                for current_cipher in current_ciphers {
+                                    match server_supported_ciphers.contains(&current_cipher) {
+                                        false => server_supported_ciphers.push(current_cipher),
+                                        _ => continue,
+                                    };
+                                }
+                            }
+                            Err(err) => {
+                                legend = "-";
+                                debug_connection_attempt_failure(tls_version, format!("{}", err));
+                            }
+                        },
                         Err(err) => {
-                            legend = "-";
-                            let _ = &tls_proto
-                                .server_unsupported_ciphers
-                                .push(cipher.to_string());
                             debug_connection_attempt_failure(tls_version, format!("{}", err));
                         }
-                    },
-                    Err(err) => {
-                        debug_connection_attempt_failure(tls_version, format!("{}", err));
+                    }
+                    if !quiet {
+                        print!("{}", legend);
+                        io::stdout().flush().unwrap();
                     }
                 }
-                if !quiet {
-                    print!("{}", legend);
-                    io::stdout().flush().unwrap();
+                print_if_not_quiet("");
+
+                TlsVersion {
+                    server_supported_ciphers,
+                    version: tls_version,
                 }
-            }
-            print_if_not_quiet("");
-            tls_ciphers.push(tls_proto);
-        }
-        tls_ciphers
+            })
+            .collect();
+        tls_protos
     }
 }
 
-#[derive(Debug)]
 pub struct TlsVersion {
     version: openssl::ssl::SslVersion,
-    client_supported_ciphers: Vec<String>,
-    client_unsupported_ciphers: Vec<String>,
     server_supported_ciphers: Vec<String>,
-    server_unsupported_ciphers: Vec<String>,
 }
 
 impl TlsVersion {
     pub fn new(version: openssl::ssl::SslVersion) -> Self {
         TlsVersion {
             version,
-            client_supported_ciphers: Vec::new(),
-            client_unsupported_ciphers: Vec::new(),
             server_supported_ciphers: Vec::new(),
-            server_unsupported_ciphers: Vec::new(),
         }
     }
 }
