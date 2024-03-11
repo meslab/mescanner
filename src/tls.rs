@@ -2,7 +2,7 @@ use log::debug;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use std::fmt;
 use std::io::{self, Write};
-use std::net::TcpStream;
+use std::net::{TcpStream, ToSocketAddrs};
 
 pub struct TlsVersions<'a> {
     versions: Vec<openssl::ssl::SslVersion>,
@@ -24,6 +24,11 @@ impl<'a> TlsVersions<'a> {
     }
 
     pub fn try_connect(&self, host: &str, port: u16, quiet: bool) -> Vec<TlsVersion> {
+        if !can_resolve_dns(host) {
+            println!("Cannot resolve DNS for {}", host);
+            return Vec::new();
+        }
+
         debug!("Supported ciphers: {:?}", self.cipher_list);
 
         let print_if_not_quiet = |message: &str| {
@@ -164,4 +169,8 @@ fn tls_version_to_string(tls_version: openssl::ssl::SslVersion) -> &'static str 
         openssl::ssl::SslVersion::TLS1_3 => "TLSv1.3",
         _ => "Unknown",
     }
+}
+
+fn can_resolve_dns(dns: &str) -> bool {
+    (dns, 0).to_socket_addrs().is_ok()
 }
