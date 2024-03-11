@@ -41,13 +41,10 @@ impl<'a> TlsVersions<'a> {
         };
 
         print_if_not_quiet(&format!(
-            "Testing secure connection to {}:{} using different TLS versions and ciphers",
+            "Testing secure connection to {}:{} using different TLS versions and ciphers\nLegend: '+' - successful connection attempt, '-' - failed connecion attempt.",
             host, port
         ));
-        print_if_not_quiet(
-            "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
-        );
-
+        
         let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
         for &tls_version in &self.versions {
