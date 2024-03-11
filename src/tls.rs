@@ -55,7 +55,7 @@ impl<'a> TlsVersions<'a> {
             .iter()
             .map(|&tls_version| {
                 print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
-                let mut legend = "";
+                let mut legend = "-";
                 let mut server_supported_ciphers: Vec<String> = Vec::new();
                 for cipher in &self.cipher_list {
                     debug!(
@@ -105,7 +105,6 @@ impl<'a> TlsVersions<'a> {
                                 }
                             }
                             Err(err) => {
-                                legend = "-";
                                 debug_connection_attempt_failure(tls_version, format!("{}", err));
                             }
                         },
