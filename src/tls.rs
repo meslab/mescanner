@@ -1,5 +1,6 @@
 use log::debug;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use std::fmt;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -24,157 +25,119 @@ impl<'a> TlsVersions<'a> {
 
     pub fn try_connect(&self, host: &str, port: u16, quiet: bool) -> Vec<TlsVersion> {
         debug!("Supported ciphers: {:?}", self.cipher_list);
-        if !quiet {
-            println!(
-                "Testing secure connection to {}:{} using different TLS versions and ciphers",
-                host, port
-            );
-            println!(
-                "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
-            );
-        }
-        let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
-        for &tls_version in &self.versions {
+        let print_if_not_quiet = |message: &str| {
             if !quiet {
-                println!("Using {} ", tls_version_to_string(tls_version));
+                println!("{}", message);
             }
-            let mut tls_proto = TlsVersion::new(tls_version);
+        };
 
-            for cipher in &self.cipher_list {
-                debug!(
-                    "Trying to connect using Protocol {}, cipher: {}",
-                    tls_version_to_string(tls_version),
-                    cipher
-                );
-                let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-                builder.set_verify(SslVerifyMode::NONE);
-                builder.set_security_level(0);
+        let debug_connection_attempt_failure = |tls_version, err| {
+            debug!(
+                "Connection attempt using TLS {} failed: {}",
+                tls_version_to_string(tls_version),
+                err
+            );
+        };
 
-                match tls_version {
-                    openssl::ssl::SslVersion::TLS1_3 => match builder.set_ciphersuites(cipher) {
-                        Ok(_) => {
-                            tls_proto.client_supported_ciphers.push(cipher.to_string());
-                        }
-                        _ => {
-                            tls_proto
-                                .client_unsupported_ciphers
-                                .push(cipher.to_string());
-                            continue;
-                        }
-                    },
-                    _ => match builder.set_cipher_list(cipher) {
-                        Ok(_) => {
-                            tls_proto.client_supported_ciphers.push(cipher.to_string());
-                        }
-                        _ => {
-                            tls_proto
-                                .client_unsupported_ciphers
-                                .push(cipher.to_string());
-                            continue;
-                        }
-                    },
-                }
+        print_if_not_quiet(&format!(
+            "Testing secure connection to {}:{} using different TLS versions and ciphers\nLegend: '+' - successful connection attempt, '-' - failed connecion attempt.",
+            host, port
+        ));
 
-                builder.set_min_proto_version(Some(tls_version)).unwrap();
-                builder.set_max_proto_version(Some(tls_version)).unwrap();
-                let connector = builder.build();
+        let tls_protos: Vec<TlsVersion> = self
+            .versions
+            .iter()
+            .map(|&tls_version| {
+                print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
+                let mut legend = "";
+                let mut server_supported_ciphers: Vec<String> = Vec::new();
+                for cipher in &self.cipher_list {
+                    debug!(
+                        "Trying to connect using Protocol {}, cipher: {}",
+                        tls_version_to_string(tls_version),
+                        cipher
+                    );
+                    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+                    builder.set_verify(SslVerifyMode::NONE);
+                    builder.set_security_level(0);
 
-                match TcpStream::connect((host, port)) {
-                    Ok(stream) => match connector.connect(host, stream) {
-                        Ok(ssl_stream) => {
-                            if !quiet {
-                                print!("+");
-                            }
-                            debug!("SSL stream: {:?}", ssl_stream);
-                            let current_ciphers = ssl_stream
-                                .ssl()
-                                .current_cipher()
-                                .unwrap()
-                                .name()
-                                .split(':')
-                                .map(|s| s.to_string())
-                                .collect::<Vec<String>>();
-                            for current_cipher in current_ciphers {
-                                match tls_proto.server_supported_ciphers.contains(&current_cipher) {
-                                    false => {
-                                        &tls_proto.server_supported_ciphers.push(current_cipher)
-                                    }
-                                    _ => continue,
-                                };
+                    match tls_version {
+                        openssl::ssl::SslVersion::TLS1_3 => {
+                            match builder.set_ciphersuites(cipher) {
+                                Ok(_) => {}
+                                _ => continue,
                             }
                         }
+                        _ => match builder.set_cipher_list(cipher) {
+                            Ok(_) => {}
+                            _ => continue,
+                        },
+                    }
+
+                    builder.set_min_proto_version(Some(tls_version)).unwrap();
+                    builder.set_max_proto_version(Some(tls_version)).unwrap();
+                    let connector = builder.build();
+
+                    match TcpStream::connect((host, port)) {
+                        Ok(stream) => match connector.connect(host, stream) {
+                            Ok(ssl_stream) => {
+                                legend = "+";
+                                debug!("SSL stream: {:?}", ssl_stream);
+                                let current_ciphers = ssl_stream
+                                    .ssl()
+                                    .current_cipher()
+                                    .unwrap()
+                                    .name()
+                                    .split(':')
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<String>>();
+                                for current_cipher in current_ciphers {
+                                    match server_supported_ciphers.contains(&current_cipher) {
+                                        false => server_supported_ciphers.push(current_cipher),
+                                        _ => continue,
+                                    };
+                                }
+                            }
+                            Err(err) => {
+                                legend = "-";
+                                debug_connection_attempt_failure(tls_version, format!("{}", err));
+                            }
+                        },
                         Err(err) => {
-                            if !quiet {
-                                print!("-");
-                            }
-
-                            let _ = &tls_proto
-                                .server_unsupported_ciphers
-                                .push(cipher.to_string());
-                            debug!(
-                                "Connection attempt using TLS {} failed: {}",
-                                tls_version_to_string(tls_version),
-                                err
-                            );
+                            debug_connection_attempt_failure(tls_version, format!("{}", err));
                         }
-                    },
-                    Err(err) => {
-                        debug!(
-                            "Connection attempt using TLS {} failed: {}",
-                            tls_version_to_string(tls_version),
-                            err
-                        );
+                    }
+                    if !quiet {
+                        print!("{}", legend);
+                        io::stdout().flush().unwrap();
                     }
                 }
-                io::stdout().flush().unwrap();
-            }
-            if !quiet {
-                println!();
-            }
-            match &tls_proto.server_supported_ciphers.len() {
-                0 => {
-                    debug!(
-                        "Server does not support TLS version {}",
-                        tls_version_to_string(tls_version)
-                    );
+                print_if_not_quiet("");
+
+                TlsVersion {
+                    server_supported_ciphers,
+                    version: tls_version,
                 }
-                _ => {
-                    debug!(
-                        "Protocol {} supported by server\n Ciphers: {:?}",
-                        tls_version_to_string(tls_version),
-                        &tls_proto.server_supported_ciphers
-                    );
-                }
-            }
-            tls_ciphers.push(tls_proto);
-        }
-        tls_ciphers
+            })
+            .collect();
+        tls_protos
     }
 }
 
-#[derive(Debug)]
 pub struct TlsVersion {
     version: openssl::ssl::SslVersion,
-    client_supported_ciphers: Vec<String>,
-    client_unsupported_ciphers: Vec<String>,
     server_supported_ciphers: Vec<String>,
-    server_unsupported_ciphers: Vec<String>,
 }
 
 impl TlsVersion {
     pub fn new(version: openssl::ssl::SslVersion) -> Self {
         TlsVersion {
             version,
-            client_supported_ciphers: Vec::new(),
-            client_unsupported_ciphers: Vec::new(),
             server_supported_ciphers: Vec::new(),
-            server_unsupported_ciphers: Vec::new(),
         }
     }
 }
-
-use std::fmt;
 
 impl fmt::Display for TlsVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
