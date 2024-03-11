@@ -1,5 +1,6 @@
 use log::debug;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use std::fmt;
 use std::io::{self, Write};
 use std::net::TcpStream;
 
@@ -24,22 +25,35 @@ impl<'a> TlsVersions<'a> {
 
     pub fn try_connect(&self, host: &str, port: u16, quiet: bool) -> Vec<TlsVersion> {
         debug!("Supported ciphers: {:?}", self.cipher_list);
-        if !quiet {
-            println!(
-                "Testing secure connection to {}:{} using different TLS versions and ciphers",
-                host, port
+
+        let print_if_not_quiet = |message: &str| {
+            if !quiet {
+                println!("{}", message);
+            }
+        };
+
+        let debug_connection_attempt_failure = |tls_version, err| {
+            debug!(
+                "Connection attempt using TLS {} failed: {}",
+                tls_version_to_string(tls_version),
+                err
             );
-            println!(
-                "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
-            );
-        }
+        };
+
+        print_if_not_quiet(&format!(
+            "Testing secure connection to {}:{} using different TLS versions and ciphers",
+            host, port
+        ));
+        print_if_not_quiet(
+            "Legend: '+' - successful connection attempt, '-' - failed connecion attempt.",
+        );
+
         let mut tls_ciphers: Vec<TlsVersion> = Vec::new();
 
         for &tls_version in &self.versions {
-            if !quiet {
-                println!("Using {} ", tls_version_to_string(tls_version));
-            }
+            print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
             let mut tls_proto = TlsVersion::new(tls_version);
+            let mut legend = "";
 
             for cipher in &self.cipher_list {
                 debug!(
@@ -83,9 +97,7 @@ impl<'a> TlsVersions<'a> {
                 match TcpStream::connect((host, port)) {
                     Ok(stream) => match connector.connect(host, stream) {
                         Ok(ssl_stream) => {
-                            if !quiet {
-                                print!("+");
-                            }
+                            legend = "+";
                             debug!("SSL stream: {:?}", ssl_stream);
                             let current_ciphers = ssl_stream
                                 .ssl()
@@ -105,48 +117,23 @@ impl<'a> TlsVersions<'a> {
                             }
                         }
                         Err(err) => {
-                            if !quiet {
-                                print!("-");
-                            }
-
+                            legend = "-";
                             let _ = &tls_proto
                                 .server_unsupported_ciphers
                                 .push(cipher.to_string());
-                            debug!(
-                                "Connection attempt using TLS {} failed: {}",
-                                tls_version_to_string(tls_version),
-                                err
-                            );
+                            debug_connection_attempt_failure(tls_version, format!("{}", err));
                         }
                     },
                     Err(err) => {
-                        debug!(
-                            "Connection attempt using TLS {} failed: {}",
-                            tls_version_to_string(tls_version),
-                            err
-                        );
+                        debug_connection_attempt_failure(tls_version, format!("{}", err));
                     }
                 }
-                io::stdout().flush().unwrap();
-            }
-            if !quiet {
-                println!();
-            }
-            match &tls_proto.server_supported_ciphers.len() {
-                0 => {
-                    debug!(
-                        "Server does not support TLS version {}",
-                        tls_version_to_string(tls_version)
-                    );
-                }
-                _ => {
-                    debug!(
-                        "Protocol {} supported by server\n Ciphers: {:?}",
-                        tls_version_to_string(tls_version),
-                        &tls_proto.server_supported_ciphers
-                    );
+                if !quiet {
+                    print!("{}", legend);
+                    io::stdout().flush().unwrap();
                 }
             }
+            print_if_not_quiet("");
             tls_ciphers.push(tls_proto);
         }
         tls_ciphers
@@ -173,8 +160,6 @@ impl TlsVersion {
         }
     }
 }
-
-use std::fmt;
 
 impl fmt::Display for TlsVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
