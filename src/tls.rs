@@ -55,9 +55,9 @@ impl<'a> TlsVersions<'a> {
             .iter()
             .map(|&tls_version| {
                 print_if_not_quiet(&format!("Using {} ", tls_version_to_string(tls_version)));
-                let mut legend = "-";
                 let mut server_supported_ciphers: Vec<String> = Vec::new();
                 for cipher in &self.cipher_list {
+                    let mut legend = "-";
                     debug!(
                         "Trying to connect using Protocol {}, cipher: {}",
                         tls_version_to_string(tls_version),
